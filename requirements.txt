@@ -1,0 +1,41 @@
+# Exact versions the studio is tested with. The UI patches two expressions in
+# Gradio's bundled audio player and shims the YuE2 runtime, so an unpinned
+# upgrade could quietly break them; update these deliberately, together.
+# PyTorch itself (2.5.1 + CUDA 12.1) is installed by run_yue_studio.bat.
+gradio==6.17.3
+gradio_client==2.5.0
+# The [hf_xet] extra installs the Xet transfer backend, so YuE2 snapshot
+# downloads use Hugging Face's chunked protocol instead of the slower HTTP
+# fallback ("Xet Storage is enabled for this repo, but 'hf_xet' is not
+# installed" appears during prefetch_weights() otherwise).
+# Kept <1.0 because transformers==4.46.3 requires huggingface-hub<1.0.
+huggingface_hub[hf_xet]==0.36.2
+hf-xet==1.7.0
+transformers==4.46.3
+safetensors==0.8.0
+tiktoken==0.14.0
+numpy==2.4.6
+soundfile==0.14.0
+accelerate==1.15.0
+# Stem splitting and the instrumental vocal guard (vocals/drums/bass/other, or
+# 6 stems). Small pure packages on top of the CUDA torch build; weights
+# download on first use.
+demucs==4.1.0
+# The studio's own window (WebView2 on Windows; falls back to the browser) and
+# the QR code for opening it on a phone.
+pywebview==5.4
+qrcode==8.0
+
+# Local YuE2 inference package.
+# run_yue_studio.bat fetches it (pinned commit) to third_party/YuE and installs
+# it with `--no-deps`, because its own strict pins (torch==2.10.0,
+# transformers==4.57.6, ...) conflict with the CUDA 12.1 torch build and the
+# transformers==4.46.3 pin above. Its remaining dependencies are all covered here.
+# -e ./third_party/YuE
+
+# NOTE on the CUDA 12.1 wheels: yue2's CUDA-graph AR decode auto-detects
+# FlashAttention via `hasattr(torch.ops.aten, "_flash_attention_forward")`. These
+# wheels register that op but are not compiled with it (`USE_FLASH_ATTENTION was
+# not enabled for build`) and reject cuDNN SDPA during graph capture
+# (`operation not permitted when stream is capturing`). yue_native_engine probes
+# the op at startup and falls back to public SDPA, which captures cleanly.

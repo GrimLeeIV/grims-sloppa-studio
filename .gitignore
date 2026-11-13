@@ -1,0 +1,22 @@
+# Made on install or by the studio: never part of the repository.
+.venv/
+models/
+third_party/
+addons/
+.temp/
+Outputs/
+dist/
+__pycache__/
+*.pyc
+# Your own last session (style, lyrics, folders).
+.last_session.json
+
+# Dependencies and local secrets
+node_modules/
+.env
+.env.*
+*.log
+# OS clutter
+Thumbs.db
+desktop.ini
+.DS_Store
