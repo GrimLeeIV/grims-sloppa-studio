@@ -20,3 +20,5 @@ node_modules/
 Thumbs.db
 desktop.ini
 .DS_Store
+# Graphify knowledge graph (local, rebuilt on demand)
+graphify-out/
