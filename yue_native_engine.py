@@ -88,6 +88,10 @@ CHANNELS = 2
 # Every rendered track gets a sidecar with its request, ABC score IDs and song
 # (codec) tokens, saved next to the MP3. extend_track() continues from it.
 TOKENS_SUFFIX = ".yue2tokens.npz"
+# Readable copies of what a track was made from, next to it: its score (ABC
+# notation, as performed) and the lyrics as sent to the model.
+SCORE_SUFFIX = ".abc"
+LYRICS_SUFFIX = ".lyrics.txt"
 
 # Songs land within this many seconds of the requested length: shorter scores
 # are continued, and the song-token stage may only stop inside this window.
@@ -160,6 +164,62 @@ DECODER_VRAM_RESERVE_GIB = 2.0
 RESIDENT_VAE_CORE_FRAMES = 512
 # Below this much VRAM the decoder is loaded per track instead (12 GB cards).
 RESIDENT_DECODER_MIN_GIB = 14.0
+
+
+_TEXT_TOKENIZER: Any = None
+
+
+def _text_tokenizer() -> Any:
+    """YuE2's frozen text/score BPE on its own (no model weights): it turns score IDs back into ABC."""
+    global _TEXT_TOKENIZER
+    if _TEXT_TOKENIZER is None:
+        from yue2.tokenization_yue2 import YuE2TextTokenizer
+
+        _TEXT_TOKENIZER = YuE2TextTokenizer(Path(DEFAULT_MODELS_DIR) / "YuE2-3B" / "qwen.tiktoken")
+    return _TEXT_TOKENIZER
+
+
+def write_score_sidecars(audio_path: Any, lyrics: str, abc_ids: Any, *, tokenizer: Any = None,
+                         overwrite: bool = True) -> List[Path]:
+    """Save ``<track>.abc`` (the score as performed) and ``<track>.lyrics.txt`` beside a track.
+
+    The score is decoded from the same IDs the token sidecar keeps, so it
+    follows any continuation, trimming or instrumental conversion. A track
+    without a score (planning off) gets only its lyrics. Returns the files written.
+    """
+    path = Path(audio_path)
+    written = []
+    abc_ids = list(abc_ids or [])
+    targets = [(path.with_name(path.stem + LYRICS_SUFFIX), lambda: (lyrics or "").strip() + "\n")]
+    if abc_ids:
+        targets.insert(0, (path.with_name(path.stem + SCORE_SUFFIX),
+                           lambda: (tokenizer or _text_tokenizer()).decode(abc_ids).strip() + "\n"))
+    for target, text in targets:
+        if overwrite or not target.exists():
+            target.write_text(text(), encoding="utf-8", newline="\n")
+            written.append(target)
+    return written
+
+
+def export_score_sidecars(folder: Any) -> Tuple[int, int]:
+    """Backfill ``.abc`` / ``.lyrics.txt`` for every track under ``folder`` that has saved tokens.
+
+    Never overwrites. Returns (files written, tracks that couldn't be read).
+    """
+    import numpy as np
+
+    written = failed = 0
+    for tokens in sorted(Path(folder).rglob("*" + TOKENS_SUFFIX)):
+        audio = tokens.with_name(tokens.name[: -len(TOKENS_SUFFIX)] + ".mp3")
+        try:
+            with np.load(tokens, allow_pickle=False) as data:
+                lyrics = json.loads(str(data["request"])).get("lyrics", "")
+                abc_ids = data["abc_ids"].tolist()
+            written += len(write_score_sidecars(audio, lyrics, abc_ids, overwrite=False))
+        except Exception as exc:
+            failed += 1
+            print(f"[YuE2] Couldn't export the score of {tokens.name}: {exc}")
+    return written, failed
 
 
 def _wants_no_vocals(style: str) -> bool:
@@ -2235,6 +2295,11 @@ class YuE2Engine:
             abc_ids=np.asarray(list(abc_ids), dtype=np.int32),
             semantic=np.asarray(list(codec), dtype=np.int32),
         )
+        try:
+            write_score_sidecars(audio_path, request.lyrics, abc_ids,
+                                 tokenizer=self.pipe.tokenizer if self.pipe is not None else None)
+        except Exception as exc:  # the track and its tokens are saved; the readable copies are extras
+            print(f"[YuE2] Couldn't save the score/lyrics files for {Path(audio_path).name}: {exc}")
 
     def _load_track_tokens(self, audio_path: Path) -> Tuple[Any, List[int], List[int]]:
         import numpy as np

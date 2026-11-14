@@ -32,3 +32,8 @@ installer, built with `python build_installer.py`).
 
 Built by Claude (Anthropic), directed by Grim Lee. Music model: YuE2 by M-A-P and HKUST. Built on Gradio,
 PyTorch, Demucs, SheetSage2, CLAP (LAION), pywebview, Pillow and qrcode. See the studio's Info panel for licences.
+
+## Licence
+
+The studio's own code is MIT licensed (see `LICENSE`). The models and libraries it downloads keep their own
+licences: the YuE2 weights in particular are fetched from their publisher and are not part of this repository.

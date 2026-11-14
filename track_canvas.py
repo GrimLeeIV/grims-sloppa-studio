@@ -541,7 +541,7 @@ function render(value) {
   const seen = new Set();
   for (const n of nodes) {
     seen.add(n.id);
-    const sig = n.kind + '|' + (n.file || n.label);
+    const sig = n.kind + '|' + (n.file || n.label) + '|' + !!n.extendable;  // rebuilt when its tokens go missing
     let c = cards.get(n.id);
     if (c && c.sig !== sig) { if (c.audio) c.audio.pause(); c.card.remove(); c = null; }
     if (!c) {

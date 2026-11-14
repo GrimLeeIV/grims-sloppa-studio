@@ -475,6 +475,8 @@ def load_tree() -> List[Any]:
     by_id = {n["id"]: n for n in nodes}
     for node in nodes:
         node.setdefault("created", track_canvas._made_at(node["file"]))
+        if node.get("kind") == "track":  # its token file may have been moved or deleted since
+            node["extendable"] = YuE2Engine.can_extend(node["file"])
         if str(node.get("sub", "")).startswith("Take "):  # saved before "takes" became "runs"
             node["sub"] = "Run " + node["sub"][5:]
     for node in nodes:
@@ -713,7 +715,7 @@ def canvas_quick(tree: List[dict], evt: gr.EventData, request: gr.Request = None
         if studio_shell.is_local(request):  # a phone can't see the rig's Explorer
             open_in_folder(node.get("file"))
         return gr.update(), gr.update()
-    if data.get("action") == "open_extend" and node.get("extendable"):
+    if data.get("action") == "open_extend" and YuE2Engine.can_extend(node["file"]):
         saved = YuE2Engine.track_request(node["file"])
         if _track_is_instrumental(saved):
             return gr.update(value="[instrumental]", interactive=False), True
@@ -761,12 +763,27 @@ def _seams(node: dict, direction: str, seam: float) -> List[float]:
     return [m for m in old if m < seam - 0.5] + [seam]
 
 
+def _has_tokens(node: dict) -> bool:
+    """Checked on disk at run time: the saved flag goes stale if the token file is moved or deleted."""
+    node["extendable"] = YuE2Engine.can_extend(node["file"])
+    return node["extendable"]
+
+
+def _no_tokens_notice(tree: List[dict], node: dict, done: str) -> Any:
+    """Why a track can't be extended or redone; the card is redrawn without the drag-to-redo."""
+    tokens = YuE2Engine.tokens_path(node["file"]).name
+    _remember_tree(tree)
+    return track_canvas.view(tree, notice=(
+        f"{node['label']} can't be {done}: its song tokens file ({tokens}) isn't next to it. It may have "
+        "been moved, renamed or deleted, or the track was made before Extend existed. "
+        "Stems still work."))
+
+
 def _render_extend(tree: List[dict], node: dict, data: dict, lyrics: str, seed: float, quality: float,
                    no_outro: bool = False, style: str = ""):
     name = node["label"]
-    if not node.get("extendable"):
-        yield [tree, _notice(tree, f"{name} has no saved song tokens (made before Extend existed), "
-                                   "so it can't be extended. Stems still work.")]
+    if not _has_tokens(node):
+        yield [tree, _no_tokens_notice(tree, node, "extended")]
         return
     direction = "before" if data.get("direction") == EXTEND_BEFORE else "after"
     seconds = float(_clamp(data.get("seconds"), EXTEND_MIN_SECONDS, EXTEND_MAX_SECONDS))
@@ -834,10 +851,8 @@ def _span(start: float, end: float) -> str:
 
 def _render_redo(tree: List[dict], node: dict, data: dict, seed: float, quality: float):
     """A selection on a card's waveform: new takes of that stretch, branching off the track."""
-    name = node["label"]
-    if not node.get("extendable"):
-        yield [tree, _notice(tree, f"{name} has no saved song tokens (made before Extend existed), "
-                                   "so part of it can't be redone.")]
+    if not _has_tokens(node):
+        yield [tree, _no_tokens_notice(tree, node, "redone")]
         return
     duration = float(node.get("dur") or 0)
     start = max(0.0, float(_clamp(data.get("start"), 0, duration)))
